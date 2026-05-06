@@ -500,6 +500,8 @@ let gridSize    = parseInt(gridSlider.value, 10);
 let animRafId   = null;   // current requestAnimationFrame id
 let running     = false;  // guard against double-click
 let stepCount   = 0;
+let linearDoneAtStep   = -1;  // wave count at which Linear BFS completed
+let pulickalDoneAtStep = -1;  // wave count at which Pulickal BFS completed
 
 // Timing state for speed control
 let lastTimestamp = 0;
@@ -528,7 +530,9 @@ function initBFS() {
     [M, M],   // Bottom-Right
   ]);
 
-  stepCount = 0;
+  stepCount          = 0;
+  linearDoneAtStep   = -1;
+  pulickalDoneAtStep = -1;
 }
 
 function drawBoth() {
@@ -585,6 +589,11 @@ function animate(timestamp) {
     if (!bfsPulickal.done) bfsPulickal.step();
 
     stepCount++;
+
+    // Record the wave count at which each algorithm first completes
+    if (bfsLinear.done   && linearDoneAtStep   === -1) linearDoneAtStep   = stepCount;
+    if (bfsPulickal.done && pulickalDoneAtStep === -1) pulickalDoneAtStep = stepCount;
+
     drawBoth();
 
     // Update HUD
@@ -605,15 +614,16 @@ function animate(timestamp) {
 }
 
 function showResult() {
-  const lDone  = bfsLinear.done;
-  const pDone  = bfsPulickal.done;
-  const lSteps = bfsLinear.visitedCount;
-  const pSteps = bfsPulickal.visitedCount;
-
-  // The Pulickal algorithm fills the grid faster (fewer BFS waves)
-  // because it starts from 4 corners — it converges in ~N/2 waves vs N waves.
-  statusEl.textContent = '✓ Pulickal Convergence completed in fewer BFS waves — Multi-polar parallelism wins!';
-  statusEl.className   = 'show pulickal-wins';
+  if (pulickalDoneAtStep < linearDoneAtStep) {
+    statusEl.textContent = `✓ Pulickal Convergence finished in ${pulickalDoneAtStep} waves vs Linear's ${linearDoneAtStep} — Multi-polar parallelism wins!`;
+    statusEl.className   = 'show pulickal-wins';
+  } else if (linearDoneAtStep < pulickalDoneAtStep) {
+    statusEl.textContent = `✓ Linear BFS finished in ${linearDoneAtStep} waves vs Pulickal's ${pulickalDoneAtStep}.`;
+    statusEl.className   = 'show linear-wins';
+  } else {
+    statusEl.textContent = `Both algorithms completed in ${linearDoneAtStep} waves — it's a tie!`;
+    statusEl.className   = 'show tie';
+  }
 }
 
 // ── Event Handlers ────────────────────────────────────────────────────────────

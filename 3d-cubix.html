@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Cubix Engine — Pulickal Algorithm vs Linear</title>
+  <style>
+    /* ── Reset & Base ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #02040a;
+      --linear:   #00f3ff;
+      --pulickal: #d4af37;
+      --text:     #dde6f0;
+      --dim:      rgba(221,230,240,0.5);
+      --border:   rgba(255,255,255,0.07);
+      --blur:     14px;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      padding: 12px 20px 8px;
+      background: linear-gradient(180deg, rgba(0,243,255,0.05) 0%, transparent 100%);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: clamp(0.9rem, 2.4vw, 1.45rem);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--linear), #ffffff, var(--pulickal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p { font-size: 0.7rem; color: var(--dim); margin-top: 3px; letter-spacing: 0.06em; }
+
+    /* ── Controls ────────────────────────────────────────────────────── */
+    #controls {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 14px;
+      padding: 8px 20px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      cursor: pointer;
+      border: 1px solid var(--linear);
+      background: rgba(0,243,255,0.08);
+      color: var(--linear);
+      padding: 6px 24px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover  { background: rgba(0,243,255,0.18); box-shadow: 0 0 12px rgba(0,243,255,0.35); }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    label {
+      font-size: 0.76rem; color: var(--dim);
+      display: flex; align-items: center; gap: 8px;
+    }
+    input[type=range] { accent-color: var(--pulickal); width: 80px; }
+    #speedVal { color: var(--pulickal); min-width: 2ch; }
+
+    /* ── Stage: dual WebGL viewports ──────────────────────────────────── */
+    #stage {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .vp {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    .vp + .vp { border-left: 1px solid var(--border); }
+
+    .vp canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* Panel badge */
+    .vp-label {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      border: 1px solid;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #lbl-linear  { color:var(--linear);  border-color:rgba(0,243,255,0.4);   background:rgba(0,243,255,0.08); }
+    #lbl-pulickal{ color:var(--pulickal);border-color:rgba(212,175,55,0.4);  background:rgba(212,175,55,0.08);}
+
+    /* ── Glassmorphism HUD ────────────────────────────────────────────── */
+    #hud {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: flex;
+      gap: 10px;
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      background: rgba(2,4,10,0.6);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 18px;
+      pointer-events: none;
+    }
+    .hud-item { display:flex;flex-direction:column;align-items:center;min-width:80px; }
+    .hud-lbl  { font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim);margin-bottom:2px; }
+    .hud-val  { font-size:1.05rem;font-variant-numeric:tabular-nums;font-weight:600; }
+    #hv-linear  { color:var(--linear); }
+    #hv-pulickal{ color:var(--pulickal); }
+    #hv-steps   { color:var(--text); }
+
+    /* ── Core Convergence overlay ─────────────────────────────────────── */
+    #convergence-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2,4,10,0.72);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    #convergence-overlay.visible { display: flex; }
+    #convergence-overlay h2 {
+      font-size: clamp(1.2rem, 4vw, 2.4rem);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--pulickal), #fff8dc, var(--pulickal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: pulseGold 1.2s ease-in-out infinite alternate;
+    }
+    #convergence-overlay p {
+      margin-top: 10px;
+      font-size: clamp(0.7rem, 1.8vw, 1rem);
+      color: var(--dim);
+      letter-spacing: 0.1em;
+    }
+    #convergence-overlay .dismiss {
+      margin-top: 22px;
+      cursor: pointer;
+      border: 1px solid var(--pulickal);
+      background: rgba(212,175,55,0.1);
+      color: var(--pulickal);
+      padding: 7px 26px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      pointer-events: all;
+      transition: background 0.2s;
+    }
+    #convergence-overlay .dismiss:hover { background: rgba(212,175,55,0.22); }
+
+    @keyframes pulseGold {
+      from { text-shadow: 0 0 20px rgba(212,175,55,0.6); }
+      to   { text-shadow: 0 0 50px rgba(212,175,55,1), 0 0 80px rgba(255,220,80,0.5); }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1>3D Cubix Engine</h1>
+    <p>Linear Voxel Fill (single origin) &nbsp;⟵ vs ⟶&nbsp; Pulickal Convergence (8-corner simultaneous fill)</p>
+  </header>
+
+  <div id="controls">
+    <button class="btn" id="btnRun">▶ Run</button>
+    <button class="btn" id="btnReset">↺ Reset</button>
+    <label>Speed <input type="range" id="speedSlider" min="1" max="20" value="8" /><span id="speedVal">8</span></label>
+  </div>
+
+  <div id="stage">
+    <!-- LEFT: Linear -->
+    <div class="vp" id="vpLinear">
+      <div class="vp-label" id="lbl-linear">Linear BFS · Origin (0,0,0)</div>
+    </div>
+
+    <!-- RIGHT: Pulickal -->
+    <div class="vp" id="vpPulickal">
+      <div class="vp-label" id="lbl-pulickal">Pulickal Convergence · 8-Corner Fronts</div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-item"><span class="hud-lbl">Linear Filled</span><span class="hud-val" id="hv-linear">0</span></div>
+      <div class="hud-item"><span class="hud-lbl">Wave</span><span class="hud-val" id="hv-steps">0</span></div>
+      <div class="hud-item"><span class="hud-lbl">Pulickal Filled</span><span class="hud-val" id="hv-pulickal">0</span></div>
+    </div>
+
+    <!-- Core Convergence overlay -->
+    <div id="convergence-overlay">
+      <h2>⚡ Core Convergence Reached ⚡</h2>
+      <p>All 8 fronts have met at the central voxel (5,5,5) — Critical Mass achieved.</p>
+      <button class="dismiss" id="dismissBtn">Continue</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Three.js r165 — defer ensures sequential load: THREE is defined before OrbitControls -->
+<script defer src="https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/three@0.165.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Bootstrap: wait for Three.js to load before running
+// ─────────────────────────────────────────────────────────────────────────────
+function waitForThree(cb) {
+  if (typeof THREE !== 'undefined' && THREE.OrbitControls) {
+    cb();
+  } else {
+    setTimeout(() => waitForThree(cb), 50);
+  }
+}
+waitForThree(main);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const GRID      = 11;          // voxels per axis (0–10), centre = (5,5,5)
+const CENTRE    = 5;           // central voxel coordinate
+const TOTAL     = GRID * GRID * GRID;
+
+/** Flat row-major index for a 3D voxel coordinate within GRID³ space. */
+function voxelIdx(x, y, z) { return z * GRID * GRID + y * GRID + x; }
+
+const COL_BG    = 0x02040a;
+const COL_LINEAR_WIRE  = 0x003b42;
+const COL_LINEAR_FILL  = 0x00f3ff;
+const COL_LINEAR_GLOW  = 0x00ffff;
+
+const COL_PULICKAL_WIRE = 0x3b2f00;
+const COL_PULICKAL_FILL = 0xd4af37;
+const COL_PULICKAL_GLOW = 0xffd75e;
+
+const COL_CORE         = 0xffffff;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3D BFS STATE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Creates a 3D BFS state on a GRID×GRID×GRID voxel space.
+ *
+ * @param {number[][][]} seeds  – array of [x,y,z] starting positions
+ */
+function create3DBFS(seeds) {
+  const visited = new Uint8Array(GRID * GRID * GRID);
+  const queue   = [];
+  const idxSet  = new Set();
+
+  for (const [x, y, z] of seeds) {
+    const i = voxelIdx(x, y, z);
+    visited[i] = 2;  // FRONTIER
+    queue.push([x, y, z]);
+    idxSet.add(i);
+  }
+
+  return {
+    visited,
+    queue,
+    idxSet,
+    done: false,
+    newlyVisited: [],  // list of [x,y,z] settled this wave
+
+    /** Advance one BFS wave. Returns list of newly settled voxels. */
+    step() {
+      if (this.done || this.queue.length === 0) { this.done = true; return []; }
+
+      const wave = this.queue.splice(0, this.queue.length);
+      const settled = [];
+
+      for (const [x, y, z] of wave) {
+        const i = voxelIdx(x, y, z);
+        visited[i] = 1;  // VISITED/SETTLED
+        settled.push([x, y, z]);
+
+        // 6-connected 3D neighbours
+        const neighbours = [
+          [x-1,y,z],[x+1,y,z],
+          [x,y-1,z],[x,y+1,z],
+          [x,y,z-1],[x,y,z+1],
+        ];
+        for (const [nx,ny,nz] of neighbours) {
+          if (nx<0||ny<0||nz<0||nx>=GRID||ny>=GRID||nz>=GRID) continue;
+          const ni = voxelIdx(nx,ny,nz);
+          if (!this.idxSet.has(ni)) {
+            this.idxSet.add(ni);
+            visited[ni] = 2;  // FRONTIER
+            this.queue.push([nx,ny,nz]);
+          }
+        }
+      }
+
+      if (this.queue.length === 0) this.done = true;
+      this.newlyVisited = settled;
+      return settled;
+    },
+
+    get filledCount() { return this.idxSet.size; },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VOXEL SCENE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Builds a Three.js scene with a GRID³ wireframe voxel cube.
+ *
+ * @param {HTMLElement} container   – DOM element to attach renderer to
+ * @param {Object}      palette     – { wire, fill, glow } hex colours
+ */
+function buildScene(container, palette) {
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  // Renderer
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(W, H);
+  renderer.setClearColor(COL_BG, 1);
+  container.appendChild(renderer.domElement);
+
+  // Scene
+  const scene = new THREE.Scene();
+
+  // Camera
+  const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 1000);
+  camera.position.set(18, 14, 22);
+  camera.lookAt(CENTRE, CENTRE, CENTRE);
+
+  // Orbit controls — allows rotate & zoom
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(CENTRE, CENTRE, CENTRE);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.07;
+  controls.update();
+
+  // Ambient + directional light (affects MeshStandardMaterial)
+  scene.add(new THREE.AmbientLight(0x111122, 2.5));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+  dir.position.set(20, 30, 20);
+  scene.add(dir);
+
+  // ── Pre-build all voxel meshes (wireframe + solid) ──────────────────────
+  // We create all voxels up front and hide them; they become visible as BFS
+  // visits each voxel. This is far more efficient than creating new meshes
+  // at runtime as it avoids repeated geometry allocation.
+
+  const voxelSize  = 0.9;
+  const voxelGeo   = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+  const wireGeo    = new THREE.EdgesGeometry(voxelGeo);
+
+  // Shared materials
+  const wireMat = new THREE.LineBasicMaterial({
+    color: palette.wire,
+    transparent: true,
+    opacity: 0.35,
+  });
+
+  // One InstancedMesh for filled voxels (performance: single draw call)
+  const fillMat = new THREE.MeshStandardMaterial({
+    color:       palette.fill,
+    emissive:    palette.glow,
+    emissiveIntensity: 0.6,
+    transparent: true,
+    opacity:     0.88,
+  });
+
+  // Wireframe mesh for every cell (visible from start — shows the "skeleton")
+  const wireInstances = new THREE.InstancedMesh(wireGeo, wireMat, TOTAL);
+  wireInstances.count = TOTAL;
+
+  // Solid fill instances (invisible initially)
+  const fillInstances = new THREE.InstancedMesh(voxelGeo, fillMat, TOTAL);
+  fillInstances.count = 0;  // start with none visible
+
+  const dummy   = new THREE.Object3D();
+  const fillMap = new Map(); // (x,y,z) -> index in fillInstances
+
+  // Place wire voxels
+  let wireIdx = 0;
+  for (let z = 0; z < GRID; z++) {
+    for (let y = 0; y < GRID; y++) {
+      for (let x = 0; x < GRID; x++) {
+        dummy.position.set(x, y, z);
+        dummy.updateMatrix();
+        wireInstances.setMatrixAt(wireIdx++, dummy.matrix);
+      }
+    }
+  }
+  wireInstances.instanceMatrix.needsUpdate = true;
+  scene.add(wireInstances);
+  scene.add(fillInstances);
+
+  // ── Core-voxel highlight (the central voxel at CENTRE,CENTRE,CENTRE) ────
+  const coreMat = new THREE.MeshStandardMaterial({
+    color:    COL_CORE,
+    emissive: COL_CORE,
+    emissiveIntensity: 0.0,  // starts dark
+    transparent: true,
+    opacity: 0.0,
+  });
+  const coreMesh = new THREE.Mesh(voxelGeo, coreMat);
+  coreMesh.position.set(CENTRE, CENTRE, CENTRE);
+  coreMesh.scale.setScalar(1.15);  // slightly larger
+  scene.add(coreMesh);
+
+  return {
+    renderer,
+    scene,
+    camera,
+    controls,
+    fillInstances,
+    fillMat,
+    fillMap,
+    coreMesh,
+    coreMat,
+    dummy,
+    /**
+     * Make voxels at the given positions visible as filled.
+     * @param {number[][]} positions – array of [x,y,z]
+     */
+    showVoxels(positions) {
+      for (const [x, y, z] of positions) {
+        if (fillMap.has(`${x},${y},${z}`)) continue;
+        const i = fillInstances.count++;
+        fillMap.set(`${x},${y},${z}`, i);
+        dummy.position.set(x, y, z);
+        dummy.updateMatrix();
+        fillInstances.setMatrixAt(i, dummy.matrix);
+      }
+      fillInstances.instanceMatrix.needsUpdate = true;
+    },
+    /** Flash the core voxel white — Critical Mass effect. */
+    flashCore() {
+      coreMat.opacity = 1;
+      coreMat.emissiveIntensity = 3.5;
+
+      let t = 0;
+      const fade = () => {
+        t += 0.025;
+        coreMat.emissiveIntensity = 3.5 * Math.max(0, 1 - t);
+        coreMat.opacity = Math.max(0.15, 1 - t * 0.7);
+        if (t < 1) requestAnimationFrame(fade);
+      };
+      requestAnimationFrame(fade);
+    },
+    /** Dispose all geometries and materials to prevent memory leaks on reset. */
+    dispose() {
+      voxelGeo.dispose();
+      wireGeo.dispose();
+      wireMat.dispose();
+      fillMat.dispose();
+      coreMat.dispose();
+      renderer.dispose();
+      // Remove canvas from DOM
+      if (renderer.domElement.parentElement) {
+        renderer.domElement.parentElement.removeChild(renderer.domElement);
+      }
+    },
+    /** Resize renderer to match container. */
+    resize() {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN
+// ─────────────────────────────────────────────────────────────────────────────
+
+function main() {
+  const vpL = document.getElementById('vpLinear');
+  const vpP = document.getElementById('vpPulickal');
+
+  const btnRun   = document.getElementById('btnRun');
+  const btnReset = document.getElementById('btnReset');
+  const speedSlider = document.getElementById('speedSlider');
+  const speedVal    = document.getElementById('speedVal');
+  const hvLinear   = document.getElementById('hv-linear');
+  const hvPulickal = document.getElementById('hv-pulickal');
+  const hvSteps    = document.getElementById('hv-steps');
+  const overlay    = document.getElementById('convergence-overlay');
+  const dismissBtn = document.getElementById('dismissBtn');
+
+  let sceneL   = null;
+  let sceneP   = null;
+  let bfsL     = null;
+  let bfsP     = null;
+  let running  = false;
+  let rafId    = null;
+  let stepCount= 0;
+  let lastTs   = 0;
+  let coreFlashed = false;
+
+  function speedToInterval(s) {
+    return Math.round(615 - s * 30);
+  }
+
+  // ── Initialise ────────────────────────────────────────────────────────────
+
+  function init() {
+    const M = GRID - 1;
+
+    // Linear BFS: single seed at corner (0,0,0)
+    bfsL = create3DBFS([[0, 0, 0]]);
+
+    // Pulickal Convergence: simultaneous BFS from all 8 corners of the cube.
+    // Each front propagates inward through the voxel grid;
+    // they meet and merge at the central voxel (CENTRE, CENTRE, CENTRE).
+    bfsP = create3DBFS([
+      [0, 0, 0], [M, 0, 0], [0, M, 0], [M, M, 0],  // Bottom 4 corners
+      [0, 0, M], [M, 0, M], [0, M, M], [M, M, M],  // Top 4 corners
+    ]);
+
+    stepCount  = 0;
+    coreFlashed = false;
+
+    // Build Three.js scenes
+    if (sceneL) sceneL.dispose();
+    if (sceneP) sceneP.dispose();
+
+    sceneL = buildScene(vpL, {
+      wire: COL_LINEAR_WIRE,
+      fill: COL_LINEAR_FILL,
+      glow: COL_LINEAR_GLOW,
+    });
+    sceneP = buildScene(vpP, {
+      wire: COL_PULICKAL_WIRE,
+      fill: COL_PULICKAL_FILL,
+      glow: COL_PULICKAL_GLOW,
+    });
+
+    // Render a single static frame
+    sceneL.renderer.render(sceneL.scene, sceneL.camera);
+    sceneP.renderer.render(sceneP.scene, sceneP.camera);
+
+    hvLinear.textContent   = '0';
+    hvPulickal.textContent = '0';
+    hvSteps.textContent    = '0';
+    overlay.classList.remove('visible');
+    btnRun.disabled = false;
+  }
+
+  // ── Animation loop ─────────────────────────────────────────────────────────
+
+  function animate(ts) {
+    if (!running) return;
+
+    // OrbitControls damping needs to update every frame
+    sceneL.controls.update();
+    sceneP.controls.update();
+
+    const interval = speedToInterval(parseInt(speedSlider.value, 10));
+
+    if (ts - lastTs >= interval) {
+      lastTs = ts;
+
+      if (!bfsL.done) {
+        const settled = bfsL.step();
+        sceneL.showVoxels(settled);
+      }
+
+      if (!bfsP.done) {
+        const settled = bfsP.step();
+        sceneP.showVoxels(settled);
+
+        // ── Pulickal Convergence: detect when the central voxel is reached ──
+        // The 8 BFS fronts converge inward; the last cell to be filled is
+        // the centre (CENTRE, CENTRE, CENTRE).  We detect it explicitly.
+        if (!coreFlashed) {
+          if (bfsP.visited[voxelIdx(CENTRE, CENTRE, CENTRE)] >= 1) {
+            coreFlashed = true;
+            sceneP.flashCore();
+            // Show "CORE CONVERGENCE REACHED" alert after a short delay
+            setTimeout(() => {
+              overlay.classList.add('visible');
+            }, 400);
+          }
+        }
+      }
+
+      stepCount++;
+      hvLinear.textContent   = bfsL.filledCount.toLocaleString();
+      hvPulickal.textContent = bfsP.filledCount.toLocaleString();
+      hvSteps.textContent    = stepCount;
+
+      if (bfsL.done && bfsP.done) {
+        running = false;
+        btnRun.disabled = false;
+      }
+    }
+
+    // Render both scenes every frame (smooth OrbitControls)
+    sceneL.renderer.render(sceneL.scene, sceneL.camera);
+    sceneP.renderer.render(sceneP.scene, sceneP.camera);
+
+    if (running) rafId = requestAnimationFrame(animate);
+    else {
+      // Final static render after stopping
+      sceneL.renderer.render(sceneL.scene, sceneL.camera);
+      sceneP.renderer.render(sceneP.scene, sceneP.camera);
+    }
+  }
+
+  // Even when not running, keep controls damping and re-render so
+  // the user can still orbit/zoom the cube.
+  function idleLoop() {
+    if (!running && sceneL && sceneP) {
+      sceneL.controls.update();
+      sceneP.controls.update();
+      sceneL.renderer.render(sceneL.scene, sceneL.camera);
+      sceneP.renderer.render(sceneP.scene, sceneP.camera);
+    }
+    requestAnimationFrame(idleLoop);
+  }
+
+  // ── Event Handlers ──────────────────────────────────────────────────────────
+
+  btnRun.addEventListener('click', () => {
+    if (running) return;  // guard: prevent double-start
+    if (!bfsL) init();
+    if (bfsL.done && bfsP.done) return;
+
+    running = true;
+    btnRun.disabled = true;
+    lastTs = 0;
+    rafId  = requestAnimationFrame(animate);
+  });
+
+  btnReset.addEventListener('click', () => {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    running = false;
+    init();
+  });
+
+  speedSlider.addEventListener('input', () => {
+    speedVal.textContent = speedSlider.value;
+  });
+
+  dismissBtn.addEventListener('click', () => {
+    overlay.classList.remove('visible');
+  });
+
+  // ── ResizeObserver — keep renderers crisp on window resize ─────────────────
+  const ro = new ResizeObserver(() => {
+    if (sceneL) sceneL.resize();
+    if (sceneP) sceneP.resize();
+  });
+  ro.observe(vpL);
+  ro.observe(vpP);
+
+  // ── Bootstrap ───────────────────────────────────────────────────────────────
+  init();
+  requestAnimationFrame(idleLoop);
+}
+</script>
+</body>
+</html>

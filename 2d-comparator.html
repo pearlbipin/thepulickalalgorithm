@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>2D Topology Comparator — Pulickal Algorithm vs Linear</title>
+  <style>
+    /* ── Reset & Base ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #050505;
+      --panel-bg:    rgba(8, 14, 28, 0.72);
+      --border:      rgba(255,255,255,0.08);
+      --linear:      #00f3ff;   /* Neon Blue  */
+      --pulickal:    #d4af37;   /* Royal Gold */
+      --text:        #e8eaf6;
+      --dim:         rgba(232,234,246,0.55);
+      --blur:        12px;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      gap: 0;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      padding: 14px 20px 10px;
+      background: linear-gradient(180deg, rgba(0,243,255,0.06) 0%, transparent 100%);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: clamp(0.95rem, 2.5vw, 1.5rem);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--linear), #ffffff, var(--pulickal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      font-size: 0.72rem;
+      color: var(--dim);
+      margin-top: 4px;
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Controls Bar ────────────────────────────────────────────────── */
+    #controls {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 20px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      cursor: pointer;
+      border: 1px solid var(--linear);
+      background: rgba(0,243,255,0.08);
+      color: var(--linear);
+      padding: 7px 28px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover  { background: rgba(0,243,255,0.18); box-shadow: 0 0 12px rgba(0,243,255,0.35); }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    label {
+      font-size: 0.78rem;
+      color: var(--dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    input[type=range] {
+      accent-color: var(--pulickal);
+      width: 90px;
+    }
+    #speedVal { color: var(--pulickal); min-width: 2ch; }
+
+    /* ── Canvas Stage ────────────────────────────────────────────────── */
+    #stage {
+      flex: 1;
+      display: flex;
+      gap: 0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    .panel + .panel {
+      border-left: 1px solid var(--border);
+    }
+
+    /* Panel title badge */
+    .panel-label {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      border: 1px solid;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #label-linear {
+      color: var(--linear);
+      border-color: rgba(0,243,255,0.4);
+      background: rgba(0,243,255,0.08);
+    }
+    #label-pulickal {
+      color: var(--pulickal);
+      border-color: rgba(212,175,55,0.4);
+      background: rgba(212,175,55,0.08);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── Glassmorphism HUD ────────────────────────────────────────────── */
+    #hud {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: flex;
+      gap: 12px;
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      background: rgba(5,5,5,0.55);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 20px;
+      pointer-events: none;
+    }
+    .hud-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 90px;
+    }
+    .hud-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-bottom: 2px;
+    }
+    .hud-val {
+      font-size: 1.15rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    #hud-linear-nodes  { color: var(--linear); }
+    #hud-pulickal-nodes{ color: var(--pulickal); }
+    #hud-steps         { color: var(--text); }
+
+    /* ── Status / finish banner ──────────────────────────────────────── */
+    #status {
+      position: absolute;
+      top: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 30;
+      font-size: clamp(0.7rem, 1.8vw, 1rem);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 6px 20px;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      opacity: 0;
+      transition: opacity 0.4s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #status.show {
+      opacity: 1;
+    }
+    #status.linear-wins {
+      color: var(--linear);
+      border-color: rgba(0,243,255,0.4);
+      background: rgba(0,243,255,0.1);
+    }
+    #status.pulickal-wins {
+      color: var(--pulickal);
+      border-color: rgba(212,175,55,0.45);
+      background: rgba(212,175,55,0.1);
+    }
+    #status.tie {
+      color: var(--text);
+      border-color: var(--border);
+      background: rgba(255,255,255,0.06);
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1>2D Topology Comparator</h1>
+    <p>Linear BFS &nbsp;|&nbsp; Single origin (0,0) &nbsp;⟵&nbsp; vs &nbsp;⟶&nbsp; Pulickal Convergence &nbsp;|&nbsp; Quad-corner multi-front BFS</p>
+  </header>
+
+  <div id="controls">
+    <button class="btn" id="btnRun">▶ Run</button>
+    <button class="btn" id="btnReset">↺ Reset</button>
+    <label>
+      Speed
+      <input type="range" id="speedSlider" min="1" max="20" value="8" />
+      <span id="speedVal">8</span>
+    </label>
+    <label>
+      Grid
+      <input type="range" id="gridSlider" min="10" max="80" value="40" />
+      <span id="gridVal">40</span>
+    </label>
+  </div>
+
+  <!-- Dual viewport -->
+  <div id="stage">
+    <!-- LEFT: Linear -->
+    <div class="panel" id="panelLinear">
+      <div class="panel-label" id="label-linear">Linear BFS · Origin (0,0)</div>
+      <canvas id="canvasLinear"></canvas>
+    </div>
+
+    <!-- RIGHT: Pulickal -->
+    <div class="panel" id="panelPulickal">
+      <div class="panel-label" id="label-pulickal">Pulickal Convergence · Quad-Corners</div>
+      <canvas id="canvasPulickal"></canvas>
+    </div>
+
+    <!-- Glassmorphism HUD -->
+    <div id="hud">
+      <div class="hud-item">
+        <span class="hud-label">Linear Active</span>
+        <span class="hud-val" id="hud-linear-nodes">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Step</span>
+        <span class="hud-val" id="hud-steps">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Pulickal Active</span>
+        <span class="hud-val" id="hud-pulickal-nodes">0</span>
+      </div>
+    </div>
+
+    <!-- Finish banner -->
+    <div id="status"></div>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Set up a canvas for High-DPI / Retina rendering.
+ *  Returns the 2D context scaled so 1 CSS-pixel == 1 logical unit. */
+function setupHiDPI(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRID MODEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EMPTY    = 0;
+const VISITED  = 1;
+const FRONTIER = 2;
+
+/**
+ * BFS state for one grid.
+ *
+ * @param {number}   size  – grid dimension (size × size)
+ * @param {number[][]} seeds – array of [col, row] starting positions
+ */
+function createBFS(size, seeds) {
+  const grid    = new Uint8Array(size * size); // flat row-major array
+  const queue   = [];                          // BFS frontier queue
+  const visited = new Set();
+
+  function idx(c, r) { return r * size + c; }
+
+  // Enqueue all seed positions
+  for (const [c, r] of seeds) {
+    const i = idx(c, r);
+    grid[i] = FRONTIER;
+    queue.push([c, r]);
+    visited.add(i);
+  }
+
+  return {
+    grid,
+    queue,
+    visited,
+    done: false,
+    stepsThisRound: 0,
+    /** Advance the BFS by exactly one "wave" (process all current-frontier nodes). */
+    step() {
+      if (this.done || this.queue.length === 0) {
+        this.done = true;
+        return;
+      }
+
+      // Snapshot the frontier to process this wave
+      const waveFront = this.queue.splice(0, this.queue.length);
+      this.stepsThisRound = waveFront.length;
+
+      for (const [c, r] of waveFront) {
+        const i = idx(c, r);
+        grid[i] = VISITED;  // mark settled
+
+        // 4-connected neighbours
+        const neighbours = [
+          [c - 1, r], [c + 1, r],
+          [c, r - 1], [c, r + 1],
+        ];
+        for (const [nc, nr] of neighbours) {
+          if (nc < 0 || nr < 0 || nc >= size || nr >= size) continue;
+          const ni = idx(nc, nr);
+          if (!visited.has(ni)) {
+            visited.add(ni);
+            grid[ni] = FRONTIER;
+            this.queue.push([nc, nr]);
+          }
+        }
+      }
+
+      if (this.queue.length === 0) this.done = true;
+    },
+    /** Active-node count = frontier size. */
+    get activeNodes() { return this.queue.length; },
+    /** Total visited cells. */
+    get visitedCount() { return this.visited.size; },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RENDERER
+// ─────────────────────────────────────────────────────────────────────────────
+
+const COLORS = {
+  bg:       '#060a10',
+  empty:    'rgba(20,30,50,0.0)',
+  gridLine: 'rgba(255,255,255,0.04)',
+  linear: {
+    visited:  '#00f3ff',
+    frontier: '#ffffff',
+    glow:     'rgba(0,243,255,0.35)',
+  },
+  pulickal: {
+    visited:  '#d4af37',
+    frontier: '#fff8dc',
+    glow:     'rgba(212,175,55,0.35)',
+  },
+};
+
+/**
+ * Draw the full grid state onto a canvas context.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Object}   bfs       – BFS state object
+ * @param {Object}   palette   – color theme (COLORS.linear or COLORS.pulickal)
+ * @param {number}   size      – grid dimension
+ * @param {number}   cssW      – available CSS width  (px)
+ * @param {number}   cssH      – available CSS height (px)
+ */
+function renderGrid(ctx, bfs, palette, size, cssW, cssH) {
+  // Cell size to fill the available area
+  const cellW = cssW / size;
+  const cellH = cssH / size;
+  const cell  = Math.min(cellW, cellH);
+
+  // Center the grid
+  const offX = (cssW - cell * size) / 2;
+  const offY = (cssH - cell * size) / 2;
+
+  // Background
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  // Draw cells
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      const state = bfs.grid[r * size + c];
+      if (state === EMPTY) continue;
+
+      const x = offX + c * cell;
+      const y = offY + r * cell;
+      const pad = cell > 4 ? 1 : 0;
+
+      if (state === FRONTIER) {
+        // Glowing frontier cell
+        ctx.shadowBlur  = Math.max(6, cell * 1.4);
+        ctx.shadowColor = palette.glow;
+        ctx.fillStyle   = palette.frontier;
+      } else {
+        // Settled visited cell
+        ctx.shadowBlur  = Math.max(3, cell * 0.6);
+        ctx.shadowColor = palette.glow;
+        ctx.fillStyle   = palette.visited;
+      }
+
+      ctx.fillRect(x + pad, y + pad, cell - pad * 2, cell - pad * 2);
+    }
+  }
+
+  // Reset shadow for grid lines
+  ctx.shadowBlur = 0;
+
+  // Subtle grid overlay (only when cells are large enough to see it)
+  if (cell >= 6) {
+    ctx.strokeStyle = COLORS.gridLine;
+    ctx.lineWidth   = 0.5;
+    for (let i = 0; i <= size; i++) {
+      ctx.beginPath();
+      ctx.moveTo(offX + i * cell, offY);
+      ctx.lineTo(offX + i * cell, offY + size * cell);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(offX,            offY + i * cell);
+      ctx.lineTo(offX + size * cell, offY + i * cell);
+      ctx.stroke();
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN CONTROLLER
+// ─────────────────────────────────────────────────────────────────────────────
+
+const canvasL = document.getElementById('canvasLinear');
+const canvasP = document.getElementById('canvasPulickal');
+let ctxL, ctxP;
+
+const btnRun    = document.getElementById('btnRun');
+const btnReset  = document.getElementById('btnReset');
+const speedSlider = document.getElementById('speedSlider');
+const speedVal    = document.getElementById('speedVal');
+const gridSlider  = document.getElementById('gridSlider');
+const gridVal     = document.getElementById('gridVal');
+
+const hudLinear   = document.getElementById('hud-linear-nodes');
+const hudPulickal = document.getElementById('hud-pulickal-nodes');
+const hudSteps    = document.getElementById('hud-steps');
+const statusEl    = document.getElementById('status');
+
+let bfsLinear   = null;
+let bfsPulickal = null;
+let gridSize    = parseInt(gridSlider.value, 10);
+let animRafId   = null;   // current requestAnimationFrame id
+let running     = false;  // guard against double-click
+let stepCount   = 0;
+let linearDoneAtStep   = -1;  // wave count at which Linear BFS completed
+let pulickalDoneAtStep = -1;  // wave count at which Pulickal BFS completed
+
+// Timing state for speed control
+let lastTimestamp = 0;
+
+// Speed: waves-per-second → interval in ms
+function speedToInterval(spd) {
+  // spd 1–20 → 600ms–15ms
+  return Math.round(615 - spd * 30);
+}
+
+// ── Initialise / Reset ──────────────────────────────────────────────────────
+
+function initBFS() {
+  const N  = gridSize;
+  const M  = N - 1;
+
+  // Linear: single origin at top-left
+  bfsLinear   = createBFS(N, [[0, 0]]);
+
+  // Pulickal Convergence: all four corners simultaneously
+  // This creates four simultaneous BFS fronts that converge on the grid centre.
+  bfsPulickal = createBFS(N, [
+    [0, 0],   // Top-Left
+    [M, 0],   // Top-Right
+    [0, M],   // Bottom-Left
+    [M, M],   // Bottom-Right
+  ]);
+
+  stepCount          = 0;
+  linearDoneAtStep   = -1;
+  pulickalDoneAtStep = -1;
+}
+
+function drawBoth() {
+  const W_L = canvasL.getBoundingClientRect().width;
+  const H_L = canvasL.getBoundingClientRect().height;
+  const W_P = canvasP.getBoundingClientRect().width;
+  const H_P = canvasP.getBoundingClientRect().height;
+
+  if (!ctxL || !ctxP) return;
+  renderGrid(ctxL, bfsLinear,   COLORS.linear,   gridSize, W_L, H_L);
+  renderGrid(ctxP, bfsPulickal, COLORS.pulickal, gridSize, W_P, H_P);
+}
+
+function resetUI() {
+  hudLinear.textContent   = '0';
+  hudPulickal.textContent = '0';
+  hudSteps.textContent    = '0';
+  statusEl.className      = '';
+  statusEl.textContent    = '';
+}
+
+function fullReset() {
+  // Cancel any in-flight animation
+  if (animRafId) { cancelAnimationFrame(animRafId); animRafId = null; }
+  running = false;
+
+  gridSize = parseInt(gridSlider.value, 10);
+  initBFS();
+  rebuildContexts();
+  drawBoth();
+  resetUI();
+  btnRun.disabled = false;
+}
+
+// ── Context management (also called on resize) ───────────────────────────────
+
+function rebuildContexts() {
+  ctxL = setupHiDPI(canvasL);
+  ctxP = setupHiDPI(canvasP);
+}
+
+// ── Animation loop ───────────────────────────────────────────────────────────
+
+function animate(timestamp) {
+  if (!running) return;
+
+  const interval = speedToInterval(parseInt(speedSlider.value, 10));
+
+  if (timestamp - lastTimestamp >= interval) {
+    lastTimestamp = timestamp;
+
+    // Advance one BFS wave on each side
+    if (!bfsLinear.done)   bfsLinear.step();
+    if (!bfsPulickal.done) bfsPulickal.step();
+
+    stepCount++;
+
+    // Record the wave count at which each algorithm first completes
+    if (bfsLinear.done   && linearDoneAtStep   === -1) linearDoneAtStep   = stepCount;
+    if (bfsPulickal.done && pulickalDoneAtStep === -1) pulickalDoneAtStep = stepCount;
+
+    drawBoth();
+
+    // Update HUD
+    hudLinear.textContent   = bfsLinear.activeNodes.toLocaleString();
+    hudPulickal.textContent = bfsPulickal.activeNodes.toLocaleString();
+    hudSteps.textContent    = stepCount;
+
+    // Check completion
+    if (bfsLinear.done && bfsPulickal.done) {
+      running = false;
+      btnRun.disabled = false;
+      showResult();
+      return;
+    }
+  }
+
+  animRafId = requestAnimationFrame(animate);
+}
+
+function showResult() {
+  if (pulickalDoneAtStep < linearDoneAtStep) {
+    statusEl.textContent = `✓ Pulickal Convergence finished in ${pulickalDoneAtStep} waves vs Linear's ${linearDoneAtStep} — Multi-polar parallelism wins!`;
+    statusEl.className   = 'show pulickal-wins';
+  } else if (linearDoneAtStep < pulickalDoneAtStep) {
+    statusEl.textContent = `✓ Linear BFS finished in ${linearDoneAtStep} waves vs Pulickal's ${pulickalDoneAtStep}.`;
+    statusEl.className   = 'show linear-wins';
+  } else {
+    statusEl.textContent = `Both algorithms completed in ${linearDoneAtStep} waves — it's a tie!`;
+    statusEl.className   = 'show tie';
+  }
+}
+
+// ── Event Handlers ────────────────────────────────────────────────────────────
+
+btnRun.addEventListener('click', () => {
+  if (running) return;          // guard: prevent double-start
+  if (!bfsLinear) initBFS();
+  if (bfsLinear.done && bfsPulickal.done) return; // already finished
+
+  running = true;
+  btnRun.disabled = true;
+  lastTimestamp   = 0;
+
+  animRafId = requestAnimationFrame(animate);
+});
+
+btnReset.addEventListener('click', fullReset);
+
+speedSlider.addEventListener('input', () => {
+  speedVal.textContent = speedSlider.value;
+});
+
+gridSlider.addEventListener('input', () => {
+  gridVal.textContent = gridSlider.value;
+  fullReset();  // reset with new grid size immediately
+});
+
+// ── ResizeObserver — redraw without blur on window resize ────────────────────
+// Using ResizeObserver ensures the canvas physical pixel count always matches
+// its layout size, preventing the canvas from appearing blurry on resize.
+
+const resizeObserver = new ResizeObserver(() => {
+  rebuildContexts();
+  if (bfsLinear) drawBoth();
+});
+
+resizeObserver.observe(canvasL);
+resizeObserver.observe(canvasP);
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+// Wait one frame so layout paints before we read dimensions
+requestAnimationFrame(() => {
+  rebuildContexts();
+  initBFS();
+  drawBoth();
+});
+</script>
+</body>
+</html>

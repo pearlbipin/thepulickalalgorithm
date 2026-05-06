@@ -527,18 +527,22 @@ function buildScene(panel, seeds, solidCol, wireCol, emissiveCol) {
     }
   }
 
-  // ── BFS state ────────────────────────────────────────────────
+  // ── BFS state — declared before bfsTick so the closure is clear ─
   const visited  = new Set(seeds.map(([x,y,z]) => key3(x,y,z)));
   const frontier = seeds.map(s => [...s]);
 
-  // Activate seed voxels visually
-  for (const [x,y,z] of frontier) activateVoxel(voxels, x, y, z);
+  // ── State object (used by bfsTick and the caller) ─────────────
+  const state = { visited, frontier, steps: 0, done: false };
 
   function activateVoxel(vx, x, y, z) {
     vx[x][y][z].solidMesh.visible = true;
   }
 
+  // Activate seed voxels visually
+  for (const [x,y,z] of state.frontier) activateVoxel(voxels, x, y, z);
+
   // ── BFS tick ─────────────────────────────────────────────────
+  // Expands the BFS frontier by one level and updates the state object.
   function bfsTick() {
     if (state.done || state.frontier.length === 0) { state.done = true; return; }
     const next = [];
@@ -577,9 +581,6 @@ function buildScene(panel, seeds, solidCol, wireCol, emissiveCol) {
     renderer.dispose();
     renderer.domElement.remove();
   }
-
-  // ── State object returned to caller ──────────────────────────
-  const state = { visited, frontier, steps: 0, done: false };
 
   return { renderer, camera, scene, controls, voxels, state, bfsTick, dispose };
 }
@@ -647,8 +648,8 @@ function reset() {
   coreAlert.classList.remove('visible');
 
   N = parseInt(sliderG.value, 10);
-  // Force odd so the exact centre cell exists
-  if (N % 2 === 0) N++;
+  // Force odd so the exact centre cell exists; update display if adjusted
+  if (N % 2 === 0) { N++; gridVal.textContent = N; }
 
   // Dispose old scenes
   if (sceneL) { sceneL.dispose(); sceneL = null; }

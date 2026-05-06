@@ -541,7 +541,6 @@ function animate() {
   // ── Check for finish ─────────────────────────────────────────
   if (stateL.done && stateP.done) {
     running = false;
-    const winner = stateL.steps <= stateP.steps ? 'Linear' : 'Pulickal';
     const diff   = Math.abs(stateL.steps - stateP.steps);
     setStatus(
       `Race complete! Linear: ${stateL.steps} steps | Pulickal: ${stateP.steps} steps` +
